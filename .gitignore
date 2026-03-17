@@ -38,8 +38,6 @@ npm-debug.log
 # Environment variables
 .env
 
-# Python
-__pycache__/
-*.pyc
-*.egg-info/
+# Rust
+/cli/target/
 
