@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
-const DEFAULT_BASE_URL: &str = "http://localhost:4000";
+const DEFAULT_BASE_URL: &str = "https://kerneldex.fly.dev";
 
 fn config_dir() -> PathBuf {
     dirs::config_dir()

@@ -6,6 +6,20 @@ Right now there's no single place to find GPU kernels. They're scattered across 
 
 KernelDex fixes that. Search by algorithm, hardware target, language, and source.
 
+## Install CLI
+
+```sh
+curl -sSf https://raw.githubusercontent.com/ipnon/kerneldex/main/install.sh | sh
+```
+
+Requires [Rust](https://rustup.rs). Then:
+
+```sh
+kerneldex search --algorithm attention_mla_decode
+kerneldex search --hardware MI300X --language Triton
+kerneldex login   # authenticate to submit kernels
+```
+
 ## Status
 
 Early prototype. ~150 kernels indexed so far (AMD-heavy). Expanding coverage.
