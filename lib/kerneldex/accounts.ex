@@ -9,9 +9,9 @@ defmodule Kerneldex.Accounts do
 
   def get_or_create_user_from_github(github_user) do
     attrs = %{
-      github_id: github_user["id"],
-      github_login: github_user["login"],
-      github_avatar: github_user["avatar_url"],
+      github_id: github_user["sub"],
+      github_login: github_user["preferred_username"],
+      github_avatar: github_user["picture"],
       email: github_user["email"]
     }
 
