@@ -4,10 +4,7 @@ defmodule KerneldexWeb.AuthController do
   @github_config [
     client_id: {System, :get_env, ["GITHUB_CLIENT_ID"]},
     client_secret: {System, :get_env, ["GITHUB_CLIENT_SECRET"]},
-    redirect_uri: {System, :get_env, ["GITHUB_REDIRECT_URI"]},
-    site: "https://github.com",
-    authorize_url: "/login/oauth/authorize",
-    token_url: "/login/oauth/access_token"
+    redirect_uri: {System, :get_env, ["GITHUB_REDIRECT_URI"]}
   ]
 
   def request(conn, _params) do
