@@ -63,7 +63,9 @@ defmodule Kerneldex.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:assent, "~> 0.2"}
+      {:assent, "~> 0.2"},
+      {:certifi, "~> 2.4"},
+      {:ssl_verify_fun, "~> 1.1"}
     ]
   end
 
