@@ -245,6 +245,16 @@ fn cmd_submit(
         process::exit(1);
     }
 
+    // Verify source URL is reachable
+    let http = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let resp = http.head(source_url).send()
+        .map_err(|e| anyhow::anyhow!("checking source URL: {e}"))?;
+    if !resp.status().is_success() {
+        anyhow::bail!("source URL returned {}: {}", resp.status(), source_url);
+    }
+
     let source_code = std::fs::read_to_string(&file)
         .map_err(|e| anyhow::anyhow!("reading {}: {e}", file.display()))?;
 
