@@ -6,7 +6,7 @@ defmodule Kerneldex.Catalog do
   def list_kernels(filters \\ %{}) do
     Kernel
     |> apply_filters(filters)
-    |> order_by([k], asc: k.name)
+    |> order_by([k], asc: k.file_name)
     |> Repo.all()
   end
 
@@ -36,9 +36,19 @@ defmodule Kerneldex.Catalog do
   def distinct_values(field) when field in ~w(algorithm language source_project)a do
     Kernel
     |> select([k], field(k, ^field))
+    |> where([k], not is_nil(field(k, ^field)))
     |> distinct(true)
     |> order_by([k], asc: field(k, ^field))
     |> Repo.all()
+  end
+
+  def distinct_hardware_values do
+    Kernel
+    |> select([k], k.hardware)
+    |> Repo.all()
+    |> List.flatten()
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp apply_filters(query, filters) do
@@ -57,7 +67,7 @@ defmodule Kerneldex.Catalog do
 
       {:search, v}, q when v not in [nil, ""] ->
         term = "%#{v}%"
-        where(q, [k], ilike(k.name, ^term) or ilike(k.file_name, ^term) or ilike(k.notes, ^term))
+        where(q, [k], ilike(k.file_name, ^term) or ilike(k.algorithm, ^term) or ilike(k.name, ^term))
 
       _, q ->
         q

@@ -15,6 +15,7 @@ defmodule KerneldexWeb.KernelLive.Index do
       |> assign(:algorithms, Catalog.distinct_values(:algorithm))
       |> assign(:languages, Catalog.distinct_values(:language))
       |> assign(:sources, Catalog.distinct_values(:source_project))
+      |> assign(:hardwares, Catalog.distinct_hardware_values())
       |> assign_kernels()
 
     {:ok, socket}
@@ -38,6 +39,7 @@ defmodule KerneldexWeb.KernelLive.Index do
       algorithm: params["algorithm"],
       language: params["language"],
       source_project: params["source_project"],
+      hardware: params["hardware"],
       search: params["search"]
     }
 
@@ -100,7 +102,7 @@ defmodule KerneldexWeb.KernelLive.Index do
         </div>
       </div>
 
-      <form phx-change="filter" phx-submit="filter" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <form phx-change="filter" phx-submit="filter" class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
         <input
           type="text"
           name="search"
@@ -124,6 +126,13 @@ defmodule KerneldexWeb.KernelLive.Index do
           <% end %>
         </select>
 
+        <select name="hardware" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white">
+          <option value="">All Hardware</option>
+          <%= for hw <- @hardwares do %>
+            <option value={hw} selected={@filters.hardware == hw}><%= hw %></option>
+          <% end %>
+        </select>
+
         <select name="source_project" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white">
           <option value="">All Sources</option>
           <%= for src <- @sources do %>
@@ -144,38 +153,37 @@ defmodule KerneldexWeb.KernelLive.Index do
         <table class="w-full text-left">
           <thead class="border-b border-zinc-700 text-zinc-400 text-sm">
             <tr>
-              <th class="pb-3 pr-4">Name</th>
+              <th class="pb-3 pr-4">File</th>
               <th class="pb-3 pr-4">Algorithm</th>
               <th class="pb-3 pr-4">Language</th>
-              <th class="pb-3 pr-4">Source</th>
               <th class="pb-3 pr-4">Hardware</th>
-              <th class="pb-3">Notes</th>
+              <th class="pb-3">Source</th>
             </tr>
           </thead>
           <tbody class="text-sm">
             <%= for kernel <- @kernels do %>
               <tr class="border-b border-zinc-800 hover:bg-zinc-800/50">
                 <td class="py-3 pr-4">
-                  <%= if kernel.source_url do %>
-                    <a href={kernel.source_url} target="_blank" class="text-blue-400 hover:text-blue-300">
-                      <%= kernel.name %>
-                    </a>
-                  <% else %>
-                    <span class="text-white"><%= kernel.name %></span>
-                  <% end %>
-                  <div class="text-zinc-500 text-xs font-mono"><%= kernel.file_name %></div>
+                  <a href={kernel.source_url} target="_blank" class="text-blue-400 hover:text-blue-300 font-mono font-medium">
+                    <%= kernel.file_name %>
+                  </a>
                 </td>
-                <td class="py-3 pr-4"><%= kernel.algorithm %></td>
+                <td class="py-3 pr-4 text-white"><%= kernel.algorithm %></td>
                 <td class="py-3 pr-4">
                   <span class="bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-xs"><%= kernel.language %></span>
                 </td>
-                <td class="py-3 pr-4"><%= kernel.source_project %></td>
                 <td class="py-3 pr-4">
                   <%= for hw <- kernel.hardware do %>
                     <span class="bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-xs mr-1"><%= hw %></span>
                   <% end %>
                 </td>
-                <td class="py-3 text-zinc-400 max-w-xs truncate"><%= kernel.notes %></td>
+                <td class="py-3 pr-4 text-zinc-400 text-xs">
+                  <%= if kernel.source_project do %>
+                    <span class="text-zinc-300"><%= kernel.source_project %></span>
+                  <% else %>
+                    <span class="truncate max-w-[200px] inline-block align-bottom"><%= kernel.source_url %></span>
+                  <% end %>
+                </td>
               </tr>
             <% end %>
           </tbody>
