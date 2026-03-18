@@ -10,18 +10,16 @@ defmodule KerneldexWeb.AuthController do
   def request(conn, _params) do
     config = resolve_config()
 
-    {:ok, %{url: url}} = Assent.Strategy.Github.authorize_url(config)
+    {:ok, %{url: url, session_params: session_params}} = Assent.Strategy.Github.authorize_url(config)
 
     conn
-    |> put_session(:assent_state, url |> URI.parse() |> Map.get(:query) |> URI.decode_query() |> Map.get("state"))
+    |> put_session(:assent_session_params, session_params)
     |> redirect(external: url)
   end
 
   def callback(conn, params) do
-    config = resolve_config()
-
-    # Merge the session state for CSRF verification
-    params = Map.put(params, "state", get_session(conn, :assent_state))
+    session_params = get_session(conn, :assent_session_params)
+    config = resolve_config() ++ [session_params: session_params]
 
     case Assent.Strategy.Github.callback(config, params) do
       {:ok, %{user: github_user, token: _token}} ->
