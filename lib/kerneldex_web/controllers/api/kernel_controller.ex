@@ -56,13 +56,14 @@ defmodule KerneldexWeb.Api.KernelController do
   defp kernel_json(kernel) do
     %{
       id: kernel.id,
-      name: kernel.name,
-      file_name: kernel.file_name,
+      source_code: kernel.source_code,
       source_url: kernel.source_url,
-      source_project: kernel.source_project,
+      file_name: kernel.file_name,
       language: kernel.language,
       algorithm: kernel.algorithm,
       hardware: kernel.hardware,
+      name: kernel.name,
+      source_project: kernel.source_project,
       techniques: kernel.techniques,
       notes: kernel.notes
     }

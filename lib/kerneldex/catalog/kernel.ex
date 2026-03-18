@@ -3,13 +3,14 @@ defmodule Kerneldex.Catalog.Kernel do
   import Ecto.Changeset
 
   schema "kernels" do
-    field :name, :string
-    field :file_name, :string
+    field :source_code, :string
     field :source_url, :string
-    field :source_project, :string
+    field :file_name, :string
     field :language, :string
     field :algorithm, :string
     field :hardware, {:array, :string}, default: []
+    field :name, :string
+    field :source_project, :string
     field :techniques, {:array, :string}, default: []
     field :notes, :string
 
@@ -18,8 +19,8 @@ defmodule Kerneldex.Catalog.Kernel do
     timestamps()
   end
 
-  @required ~w(name file_name source_project language algorithm)a
-  @optional ~w(source_url hardware techniques notes submitted_by_id)a
+  @required ~w(source_code source_url file_name language algorithm)a
+  @optional ~w(hardware name source_project techniques notes submitted_by_id)a
 
   def changeset(kernel, attrs) do
     kernel
