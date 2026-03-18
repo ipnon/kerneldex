@@ -1,6 +1,7 @@
 mod client;
 mod config;
 
+use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
@@ -44,24 +45,27 @@ enum Commands {
     },
     /// Submit a new kernel (requires authentication)
     Submit {
-        /// Display name
+        /// Path to source file
         #[arg(long)]
-        name: String,
-        /// Unique file name
+        file: PathBuf,
+        /// Origin URL (GitHub permalink, etc.)
         #[arg(long)]
-        file_name: String,
-        /// Source project (e.g. AITER)
-        #[arg(long)]
-        source: String,
-        /// Language (HIP, CUDA, Triton, ...)
-        #[arg(short, long)]
-        language: String,
+        source_url: String,
         /// Algorithm (e.g. attention_mla_decode)
         #[arg(short, long)]
         algorithm: String,
-        /// GitHub permalink
+        /// Language (HIP, CUDA, Triton, ...) — inferred from extension if omitted
+        #[arg(short, long)]
+        language: Option<String>,
+        /// Override file name (defaults to basename of --file)
         #[arg(long)]
-        source_url: Option<String>,
+        file_name: Option<String>,
+        /// Display name (defaults to file name without extension)
+        #[arg(long)]
+        name: Option<String>,
+        /// Source project (e.g. AITER)
+        #[arg(long)]
+        source: Option<String>,
         /// Hardware target(s)
         #[arg(long)]
         hardware: Vec<String>,
@@ -98,26 +102,17 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         } => cmd_search(query, algorithm, language, hardware, source, as_json),
         Commands::Show { id, as_json } => cmd_show(id, as_json),
         Commands::Submit {
-            name,
-            file_name,
-            source,
-            language,
-            algorithm,
+            file,
             source_url,
+            algorithm,
+            language,
+            file_name,
+            name,
+            source,
             hardware,
             techniques,
             notes,
-        } => cmd_submit(
-            &name,
-            &file_name,
-            &source,
-            &language,
-            &algorithm,
-            source_url.as_deref(),
-            hardware,
-            techniques,
-            notes.as_deref(),
-        ),
+        } => cmd_submit(file, &source_url, &algorithm, language, file_name, name, source, hardware, techniques, notes),
         Commands::Login => cmd_login(),
         Commands::Token => cmd_token(),
     }
@@ -164,31 +159,20 @@ fn cmd_search(
                     .join(", ")
             })
             .unwrap_or_default();
-        let tech = k["techniques"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_default();
 
-        println!("  [{}] {}", k["id"], k["name"].as_str().unwrap_or(""));
+        let display_name = k["name"].as_str()
+            .or(k["file_name"].as_str())
+            .unwrap_or("");
+
+        println!("  [{}] {}", k["id"], display_name);
         println!(
             "       {}  |  {}  |  {}",
             k["file_name"].as_str().unwrap_or(""),
             k["language"].as_str().unwrap_or(""),
-            k["source_project"].as_str().unwrap_or("")
+            k["algorithm"].as_str().unwrap_or("")
         );
         if !hw.is_empty() {
             println!("       hw: {hw}");
-        }
-        if !tech.is_empty() {
-            println!("       techniques: {tech}");
-        }
-        if let Some(notes) = k["notes"].as_str() {
-            println!("       {notes}");
         }
         println!();
     }
@@ -205,11 +189,14 @@ fn cmd_show(id: u64, as_json: bool) -> anyhow::Result<()> {
     }
 
     let k = &result["data"];
-    println!("Name:     {}", k["name"].as_str().unwrap_or(""));
+    let display_name = k["name"].as_str()
+        .or(k["file_name"].as_str())
+        .unwrap_or("");
+    println!("{display_name}");
     println!("File:     {}", k["file_name"].as_str().unwrap_or(""));
-    println!("Source:   {}", k["source_project"].as_str().unwrap_or(""));
-    println!("Language: {}", k["language"].as_str().unwrap_or(""));
     println!("Algo:     {}", k["algorithm"].as_str().unwrap_or(""));
+    println!("Language: {}", k["language"].as_str().unwrap_or(""));
+    println!("URL:      {}", k["source_url"].as_str().unwrap_or(""));
 
     if let Some(hw) = k["hardware"].as_array() {
         let hw: Vec<_> = hw.iter().filter_map(|v| v.as_str()).collect();
@@ -217,58 +204,82 @@ fn cmd_show(id: u64, as_json: bool) -> anyhow::Result<()> {
             println!("Hardware: {}", hw.join(", "));
         }
     }
-    if let Some(tech) = k["techniques"].as_array() {
-        let tech: Vec<_> = tech.iter().filter_map(|v| v.as_str()).collect();
-        if !tech.is_empty() {
-            println!("Techs:    {}", tech.join(", "));
+    if let Some(src) = k["source_project"].as_str() {
+        if !src.is_empty() {
+            println!("Source:   {src}");
         }
     }
-    if let Some(url) = k["source_url"].as_str() {
-        println!("URL:      {url}");
-    }
     if let Some(notes) = k["notes"].as_str() {
-        println!("Notes:    {notes}");
+        if !notes.is_empty() {
+            println!("Notes:    {notes}");
+        }
     }
 
     Ok(())
 }
 
+fn infer_language(path: &std::path::Path) -> Option<String> {
+    match path.extension()?.to_str()? {
+        "cu" | "cuh" => Some("HIP".to_string()),
+        "cpp" | "hpp" => Some("HIP".to_string()),
+        "py" => Some("Python".to_string()),
+        "md" => Some("docs".to_string()),
+        _ => None,
+    }
+}
+
 fn cmd_submit(
-    name: &str,
-    file_name: &str,
-    source: &str,
-    language: &str,
+    file: PathBuf,
+    source_url: &str,
     algorithm: &str,
-    source_url: Option<&str>,
+    language: Option<String>,
+    file_name: Option<String>,
+    name: Option<String>,
+    source: Option<String>,
     hardware: Vec<String>,
     techniques: Vec<String>,
-    notes: Option<&str>,
+    notes: Option<String>,
 ) -> anyhow::Result<()> {
     if config::get_token().is_none() {
         eprintln!("Not authenticated. Run 'kerneldex login' first.");
         process::exit(1);
     }
 
-    let hw = if hardware.is_empty() {
-        None
-    } else {
-        Some(hardware)
-    };
-    let tech = if techniques.is_empty() {
-        None
-    } else {
-        Some(techniques)
-    };
+    let source_code = std::fs::read_to_string(&file)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e}", file.display()))?;
 
-    let result =
-        client::submit_kernel(name, file_name, source, language, algorithm, source_url, hw, tech, notes)?;
+    let fname = file_name.unwrap_or_else(|| {
+        file.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
+
+    let lang = language.unwrap_or_else(|| {
+        infer_language(&file).unwrap_or_else(|| "unknown".to_string())
+    });
+
+    let hw = if hardware.is_empty() { None } else { Some(hardware) };
+    let tech = if techniques.is_empty() { None } else { Some(techniques) };
+
+    let result = client::submit_kernel(
+        &source_code,
+        source_url,
+        &fname,
+        &lang,
+        algorithm,
+        name.as_deref(),
+        source.as_deref(),
+        hw,
+        tech,
+        notes.as_deref(),
+    )?;
 
     let k = &result["data"];
-    println!(
-        "Kernel created: [{}] {}",
-        k["id"],
-        k["name"].as_str().unwrap_or("")
-    );
+    let display_name = k["name"].as_str()
+        .or(k["file_name"].as_str())
+        .unwrap_or("");
+    println!("Kernel created: [{}] {}", k["id"], display_name);
 
     Ok(())
 }

@@ -76,13 +76,15 @@ struct SubmitPayload {
 
 #[derive(Serialize)]
 struct SubmitKernel {
-    name: String,
+    source_code: String,
+    source_url: String,
     file_name: String,
-    source_project: String,
     language: String,
     algorithm: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    source_url: Option<String>,
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_project: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hardware: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,12 +94,13 @@ struct SubmitKernel {
 }
 
 pub fn submit_kernel(
-    name: &str,
+    source_code: &str,
+    source_url: &str,
     file_name: &str,
-    source_project: &str,
     language: &str,
     algorithm: &str,
-    source_url: Option<&str>,
+    name: Option<&str>,
+    source_project: Option<&str>,
     hardware: Option<Vec<String>>,
     techniques: Option<Vec<String>>,
     notes: Option<&str>,
@@ -105,12 +108,13 @@ pub fn submit_kernel(
     let client = build_client()?;
     let payload = SubmitPayload {
         kernel: SubmitKernel {
-            name: name.to_string(),
+            source_code: source_code.to_string(),
+            source_url: source_url.to_string(),
             file_name: file_name.to_string(),
-            source_project: source_project.to_string(),
             language: language.to_string(),
             algorithm: algorithm.to_string(),
-            source_url: source_url.map(String::from),
+            name: name.map(String::from),
+            source_project: source_project.map(String::from),
             hardware,
             techniques,
             notes: notes.map(String::from),
