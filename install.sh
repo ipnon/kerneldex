@@ -8,5 +8,5 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
-cargo install --git https://github.com/ipnon/kerneldex --path cli
+cargo install --git https://github.com/ipnon/kerneldex --subdir cli
 echo "Done. Run 'kerneldex --help' to get started."
