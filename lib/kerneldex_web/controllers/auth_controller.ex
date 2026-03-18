@@ -38,7 +38,10 @@ defmodule KerneldexWeb.AuthController do
             |> redirect(to: ~p"/")
         end
 
-      {:error, _error} ->
+      {:error, error} ->
+        require Logger
+        Logger.error("GitHub OAuth failed: #{inspect(error)}")
+
         conn
         |> put_flash(:error, "GitHub authentication failed")
         |> redirect(to: ~p"/")
