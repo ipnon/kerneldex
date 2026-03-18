@@ -29,7 +29,7 @@ defmodule KerneldexWeb.Plugs.Auth do
   def on_mount(:require_auth, _params, session, socket) do
     case session["user_id"] do
       nil ->
-        {:halt, Phoenix.LiveView.redirect(socket, to: "/")}
+        {:halt, Phoenix.LiveView.redirect(socket, to: "/auth/github")}
 
       user_id ->
         user = Kerneldex.Accounts.get_user!(user_id)
