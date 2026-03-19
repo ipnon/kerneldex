@@ -1,7 +1,6 @@
 mod client;
 mod config;
 
-use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
@@ -43,27 +42,17 @@ enum Commands {
         #[arg(long = "json")]
         as_json: bool,
     },
-    /// Submit a new kernel (requires authentication)
+    /// Submit a new kernel from a GitHub URL (requires authentication)
     Submit {
-        /// Path to source file
-        #[arg(long)]
-        file: PathBuf,
-        /// Origin URL (GitHub permalink, etc.)
-        #[arg(long)]
-        source_url: String,
-        /// Algorithm (e.g. attention_mla_decode)
+        /// GitHub blob URL (e.g. https://github.com/owner/repo/blob/main/path/kernel.cu)
+        url: String,
+        /// Algorithm (e.g. attention_mla_decode). Use `kerneldex algorithms` to list known values.
         #[arg(short, long)]
         algorithm: String,
-        /// Language (HIP, CUDA, Triton, ...) — inferred from extension if omitted
-        #[arg(short, long)]
-        language: Option<String>,
-        /// Override file name (defaults to basename of --file)
-        #[arg(long)]
-        file_name: Option<String>,
-        /// Display name (defaults to file name without extension)
+        /// Display name
         #[arg(long)]
         name: Option<String>,
-        /// Source project (e.g. AITER)
+        /// Source project (auto-inferred from repo name if omitted)
         #[arg(long)]
         source: Option<String>,
         /// Hardware target(s)
@@ -75,6 +64,15 @@ enum Commands {
         /// Free-form notes
         #[arg(long)]
         notes: Option<String>,
+        /// Output as JSON
+        #[arg(long = "json")]
+        as_json: bool,
+    },
+    /// List known algorithm values
+    Algorithms {
+        /// Output as JSON
+        #[arg(long = "json")]
+        as_json: bool,
     },
     /// Authenticate with KernelDex via GitHub
     Login,
@@ -102,17 +100,16 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         } => cmd_search(query, algorithm, language, hardware, source, as_json),
         Commands::Show { id, as_json } => cmd_show(id, as_json),
         Commands::Submit {
-            file,
-            source_url,
+            url,
             algorithm,
-            language,
-            file_name,
             name,
             source,
             hardware,
             techniques,
             notes,
-        } => cmd_submit(file, &source_url, &algorithm, language, file_name, name, source, hardware, techniques, notes),
+            as_json,
+        } => cmd_submit(&url, &algorithm, name, source, hardware, techniques, notes, as_json),
+        Commands::Algorithms { as_json } => cmd_algorithms(as_json),
         Commands::Login => cmd_login(),
         Commands::Token => cmd_token(),
     }
@@ -218,65 +215,43 @@ fn cmd_show(id: u64, as_json: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn infer_language(path: &std::path::Path) -> Option<String> {
-    match path.extension()?.to_str()? {
-        "cu" | "cuh" => Some("HIP".to_string()),
-        "cpp" | "hpp" => Some("HIP".to_string()),
-        "py" => Some("Python".to_string()),
-        "md" => Some("docs".to_string()),
-        _ => None,
-    }
-}
-
 fn cmd_submit(
-    file: PathBuf,
-    source_url: &str,
+    url: &str,
     algorithm: &str,
-    language: Option<String>,
-    file_name: Option<String>,
     name: Option<String>,
     source: Option<String>,
     hardware: Vec<String>,
     techniques: Vec<String>,
     notes: Option<String>,
+    as_json: bool,
 ) -> anyhow::Result<()> {
     if config::get_token().is_none() {
         eprintln!("Not authenticated. Run 'kerneldex login' first.");
         process::exit(1);
     }
 
-    // Verify source URL is reachable
+    // Validate GitHub domain
+    let parsed = url::Url::parse(url)
+        .map_err(|e| anyhow::anyhow!("invalid URL: {e}"))?;
+    if parsed.host_str() != Some("github.com") {
+        anyhow::bail!("URL must be on github.com");
+    }
+
+    // Verify URL is reachable
     let http = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
-    let resp = http.head(source_url).send()
-        .map_err(|e| anyhow::anyhow!("checking source URL: {e}"))?;
+    let resp = http.head(url).send()
+        .map_err(|e| anyhow::anyhow!("checking URL: {e}"))?;
     if !resp.status().is_success() {
-        anyhow::bail!("source URL returned {}: {}", resp.status(), source_url);
+        anyhow::bail!("URL returned {}: {}", resp.status(), url);
     }
-
-    let source_code = std::fs::read_to_string(&file)
-        .map_err(|e| anyhow::anyhow!("reading {}: {e}", file.display()))?;
-
-    let fname = file_name.unwrap_or_else(|| {
-        file.file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string()
-    });
-
-    let lang = language.unwrap_or_else(|| {
-        infer_language(&file).unwrap_or_else(|| "unknown".to_string())
-    });
 
     let hw = if hardware.is_empty() { None } else { Some(hardware) };
     let tech = if techniques.is_empty() { None } else { Some(techniques) };
 
     let result = client::submit_kernel(
-        &source_code,
-        source_url,
-        &fname,
-        &lang,
+        url,
         algorithm,
         name.as_deref(),
         source.as_deref(),
@@ -285,11 +260,45 @@ fn cmd_submit(
         notes.as_deref(),
     )?;
 
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
     let k = &result["data"];
     let display_name = k["name"].as_str()
         .or(k["file_name"].as_str())
         .unwrap_or("");
     println!("Kernel created: [{}] {}", k["id"], display_name);
+
+    Ok(())
+}
+
+fn cmd_algorithms(as_json: bool) -> anyhow::Result<()> {
+    let result = client::list_algorithms()?;
+
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    let algorithms = result["data"].as_array();
+    let algorithms = match algorithms {
+        Some(a) if !a.is_empty() => a,
+        _ => {
+            println!("No algorithms found.");
+            return Ok(());
+        }
+    };
+
+    println!("{} algorithms:\n", algorithms.len());
+    for algo in algorithms {
+        println!(
+            "  {:30} ({} kernels)",
+            algo["name"].as_str().unwrap_or(""),
+            algo["count"].as_u64().unwrap_or(0)
+        );
+    }
 
     Ok(())
 }

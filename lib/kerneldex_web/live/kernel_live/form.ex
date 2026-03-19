@@ -2,6 +2,7 @@ defmodule KerneldexWeb.KernelLive.Form do
   use KerneldexWeb, :live_view
 
   alias Kerneldex.Catalog
+  alias Kerneldex.GitHub
 
   on_mount {KerneldexWeb.Plugs.Auth, :require_auth}
 
@@ -14,6 +15,7 @@ defmodule KerneldexWeb.KernelLive.Form do
      socket
      |> assign(:page_title, "Edit Kernel")
      |> assign(:kernel, kernel)
+     |> assign(:algorithms, Catalog.distinct_values(:algorithm))
      |> assign_form(changeset)}
   end
 
@@ -24,6 +26,7 @@ defmodule KerneldexWeb.KernelLive.Form do
      socket
      |> assign(:page_title, "Submit Kernel")
      |> assign(:kernel, nil)
+     |> assign(:algorithms, Catalog.distinct_values(:algorithm))
      |> assign_form(changeset)}
   end
 
@@ -43,26 +46,45 @@ defmodule KerneldexWeb.KernelLive.Form do
   def handle_event("save", %{"kernel" => kernel_params}, socket) do
     kernel_params = Map.put(kernel_params, "submitted_by_id", socket.assigns.current_user.id)
 
-    # Parse comma-separated arrays
     kernel_params =
       kernel_params
       |> parse_array("hardware")
       |> parse_array("techniques")
 
-    case socket.assigns.kernel do
-      nil -> Catalog.create_kernel(kernel_params)
-      kernel -> Catalog.update_kernel(kernel, kernel_params)
-    end
-    |> case do
+    case fetch_and_create_or_update(socket.assigns.kernel, kernel_params) do
       {:ok, _kernel} ->
         {:noreply,
          socket
          |> put_flash(:info, "Kernel saved.")
          |> push_navigate(to: ~p"/")}
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, reason} when is_binary(reason) ->
+        {:noreply,
+         socket
+         |> put_flash(:error, reason)
+         |> assign_form(Catalog.change_kernel(socket.assigns.kernel || %Catalog.Kernel{}, kernel_params))}
     end
+  end
+
+  defp fetch_and_create_or_update(nil, params) do
+    source_url = params["source_url"] || ""
+
+    if source_url == "" do
+      {:error, "Source URL is required"}
+    else
+      with {:ok, content} <- GitHub.fetch_raw_content(source_url),
+           {:ok, inferred} <- GitHub.infer_metadata(source_url) do
+        params = Map.merge(inferred, Map.put(params, "source_code", content))
+        Catalog.create_kernel(params)
+      end
+    end
+  end
+
+  defp fetch_and_create_or_update(kernel, params) do
+    Catalog.update_kernel(kernel, params)
   end
 
   defp parse_array(params, field) do
@@ -88,50 +110,50 @@ defmodule KerneldexWeb.KernelLive.Form do
 
       <.form for={@form} phx-change="validate" phx-submit="save" class="space-y-4">
         <div>
-          <label class="block text-sm text-zinc-400 mb-1">Name</label>
-          <.input field={@form[:name]} type="text" placeholder="e.g. AITER FP8 MLA Decode" />
+          <label class="block text-sm text-zinc-400 mb-1">GitHub URL</label>
+          <.input field={@form[:source_url]} type="text" placeholder="https://github.com/owner/repo/blob/main/path/to/kernel.cu" />
+          <p class="text-xs text-zinc-500 mt-1">Paste a GitHub blob URL. Code will be fetched automatically.</p>
         </div>
 
         <div>
-          <label class="block text-sm text-zinc-400 mb-1">File Name</label>
-          <.input field={@form[:file_name]} type="text" placeholder="e.g. aiter_mla_mi300_fp8_decode.cuh" />
+          <label class="block text-sm text-zinc-400 mb-1">Algorithm</label>
+          <.input field={@form[:algorithm]} type="text" placeholder="e.g. attention_mla_decode" list="algorithms" />
+          <datalist id="algorithms">
+            <%= for algo <- @algorithms do %>
+              <option value={algo}><%= algo %></option>
+            <% end %>
+          </datalist>
         </div>
 
-        <div>
-          <label class="block text-sm text-zinc-400 mb-1">Source URL</label>
-          <.input field={@form[:source_url]} type="text" placeholder="GitHub permalink" />
-        </div>
+        <details class="border border-zinc-700 rounded-lg p-4">
+          <summary class="text-sm text-zinc-400 cursor-pointer">Optional fields</summary>
+          <div class="space-y-4 mt-4">
+            <div>
+              <label class="block text-sm text-zinc-400 mb-1">Name</label>
+              <.input field={@form[:name]} type="text" placeholder="e.g. AITER FP8 MLA Decode" />
+            </div>
 
-        <div>
-          <label class="block text-sm text-zinc-400 mb-1">Source Project</label>
-          <.input field={@form[:source_project]} type="text" placeholder="e.g. AITER" />
-        </div>
+            <div>
+              <label class="block text-sm text-zinc-400 mb-1">Source Project</label>
+              <.input field={@form[:source_project]} type="text" placeholder="e.g. AITER (auto-inferred from repo name)" />
+            </div>
 
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-zinc-400 mb-1">Language</label>
-            <.input field={@form[:language]} type="text" placeholder="e.g. HIP, CUDA, Triton" />
+            <div>
+              <label class="block text-sm text-zinc-400 mb-1">Hardware (comma-separated)</label>
+              <.input field={@form[:hardware]} type="text" placeholder="e.g. MI300X, MI350X" value={array_to_string(@form[:hardware].value)} />
+            </div>
+
+            <div>
+              <label class="block text-sm text-zinc-400 mb-1">Techniques (comma-separated)</label>
+              <.input field={@form[:techniques]} type="text" placeholder="e.g. MFMA, FP8, split-KV" value={array_to_string(@form[:techniques].value)} />
+            </div>
+
+            <div>
+              <label class="block text-sm text-zinc-400 mb-1">Notes</label>
+              <.input field={@form[:notes]} type="textarea" placeholder="Free-form notes" />
+            </div>
           </div>
-          <div>
-            <label class="block text-sm text-zinc-400 mb-1">Algorithm</label>
-            <.input field={@form[:algorithm]} type="text" placeholder="e.g. attention_mla_decode" />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-sm text-zinc-400 mb-1">Hardware (comma-separated)</label>
-          <.input field={@form[:hardware]} type="text" placeholder="e.g. MI300X, MI350X" value={array_to_string(@form[:hardware].value)} />
-        </div>
-
-        <div>
-          <label class="block text-sm text-zinc-400 mb-1">Techniques (comma-separated)</label>
-          <.input field={@form[:techniques]} type="text" placeholder="e.g. MFMA, FP8, split-KV" value={array_to_string(@form[:techniques].value)} />
-        </div>
-
-        <div>
-          <label class="block text-sm text-zinc-400 mb-1">Notes</label>
-          <.input field={@form[:notes]} type="textarea" placeholder="Free-form notes" />
-        </div>
+        </details>
 
         <div class="flex gap-4 pt-4">
           <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">

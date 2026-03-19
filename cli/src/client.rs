@@ -76,10 +76,7 @@ struct SubmitPayload {
 
 #[derive(Serialize)]
 struct SubmitKernel {
-    source_code: String,
     source_url: String,
-    file_name: String,
-    language: String,
     algorithm: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
@@ -94,10 +91,7 @@ struct SubmitKernel {
 }
 
 pub fn submit_kernel(
-    source_code: &str,
     source_url: &str,
-    file_name: &str,
-    language: &str,
     algorithm: &str,
     name: Option<&str>,
     source_project: Option<&str>,
@@ -108,10 +102,7 @@ pub fn submit_kernel(
     let client = build_client()?;
     let payload = SubmitPayload {
         kernel: SubmitKernel {
-            source_code: source_code.to_string(),
             source_url: source_url.to_string(),
-            file_name: file_name.to_string(),
-            language: language.to_string(),
             algorithm: algorithm.to_string(),
             name: name.map(String::from),
             source_project: source_project.map(String::from),
@@ -130,4 +121,16 @@ pub fn submit_kernel(
         .context("submit returned error")?;
 
     resp.json().context("parsing submit response")
+}
+
+pub fn list_algorithms() -> Result<serde_json::Value> {
+    let client = build_client()?;
+    let resp = client
+        .get(format!("{}/api/algorithms", base_url()))
+        .send()
+        .context("algorithms request failed")?
+        .error_for_status()
+        .context("algorithms returned error")?;
+
+    resp.json().context("parsing algorithms response")
 }

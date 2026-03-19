@@ -33,6 +33,15 @@ defmodule Kerneldex.Catalog do
     Kernel.changeset(kernel, attrs)
   end
 
+  def algorithm_counts do
+    Kernel
+    |> where([k], not is_nil(k.algorithm))
+    |> group_by([k], k.algorithm)
+    |> select([k], %{name: k.algorithm, count: count(k.id)})
+    |> order_by([k], desc: count(k.id))
+    |> Repo.all()
+  end
+
   def distinct_values(field) when field in ~w(algorithm language source_project)a do
     Kernel
     |> select([k], field(k, ^field))

@@ -47,6 +47,7 @@ defmodule KerneldexWeb.Router do
 
     get "/kernels", KernelController, :index
     get "/kernels/:id", KernelController, :show
+    get "/algorithms", KernelController, :algorithms
   end
 
   # Authenticated API — writes
