@@ -26,6 +26,6 @@ defmodule Kerneldex.Catalog.Kernel do
     kernel
     |> cast(attrs, @required ++ @optional)
     |> validate_required(@required)
-    |> unique_constraint(:file_name)
+    |> unique_constraint(:source_url)
   end
 end
